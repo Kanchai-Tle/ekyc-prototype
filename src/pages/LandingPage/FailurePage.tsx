@@ -11,7 +11,7 @@ export default function FailurePage() {
       </div>
       <h2 className="text-xl">กรุณาลองใหม่อีกครั้ง</h2>
       <button
-        className="bg-green-600 hover:bg-green-800 font-bold px-5 py-2 rounded-lg"
+        className="bg-yellow-600 hover:bg-yellow-800 font-bold px-5 py-2 rounded-lg"
         onClick={() => navigate('/home')}
       >
         ลองอีกครั้ง

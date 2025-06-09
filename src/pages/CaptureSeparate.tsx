@@ -1,27 +1,29 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import axios from 'axios';
 
-export default function IDCardCapture() {
+export default function CaptureSeparate() {
   const navigate = useNavigate();
 
+  const [step, setStep] = useState<'face' | 'idcard'>('face');
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [faceImageUrl, setFaceImageUrl] = useState<string | null>(null);
   const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
-  const [isCaptured, setIsCaptured] = useState<boolean | null>(null);
-  const [isCameraReady, setIsCameraReady] = useState<boolean | null>(null);
+  const [isCaptured, setIsCaptured] = useState<boolean>(false);
+  const [isCameraReady, setIsCameraReady] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string | null>(null);
-
-  const [sourceImageFromStorage, setSourceImageFromStorage] = useState<string | null>(null);
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const handleClickBack = () => {
-    stopCamera();
-    navigate('/home');
-  };
+  const apiClient = axios.create({
+    baseURL: 'http://localhost:3000',
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
 
   const stopCamera = useCallback(() => {
     if (mediaStreamRef.current) {
@@ -67,12 +69,9 @@ export default function IDCardCapture() {
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    if (!canvas || !video || !isCameraReady) {
-      console.error('Canvas, Video or Camera is not ready for capture.');
-      return;
-    }
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.error('Video dimensions are 0. Camera might not be streaming yet.');
+    if (!canvas || !video || !isCameraReady || video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error('Cannot capture photo: Canvas, video, or camera not ready or video dimensions are zero.');
+      setApiError('Cameera is not ready or video stream is invalid. Please try again.');
       return;
     }
 
@@ -80,28 +79,40 @@ export default function IDCardCapture() {
     canvas.height = video.videoHeight;
 
     const context = canvas.getContext('2d');
-    if (context) {
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    } else {
+
+    if (!context) {
       console.error('Failed to get 2d context from canvas.');
+      setApiError('Internal error: Canvas context not available.');
       return;
     }
 
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/png');
+
     stopCamera();
 
-    const cardImageUrl = canvas.toDataURL('image/png');
-    setCardImageUrl(cardImageUrl);
-    setIsCaptured(true);
+    if (step === 'face') {
+      // console.log(imageUrl);
+      setFaceImageUrl(dataUrl);
+      setStep('idcard');
+      setIsCaptured(false);
+    } else {
+      // console.log(imageUrl);
+      setCardImageUrl(dataUrl);
+      setIsCaptured(true);
+    }
   };
 
   const retakePhoto = () => {
-    setCardImageUrl(null);
-    setIsCaptured(false);
+    if (step === 'idcard') {
+      setCardImageUrl(null);
+      setIsCaptured(false);
+      setApiError(null);
+    }
+
     startCamera();
-    setApiError(null); //Error clearing if exist
   };
 
-  // Converting URL to File Methods
   const dataURLtoFile = (dataurl: string, filename: string): File | null => {
     const arr = dataurl.split(',');
     if (arr.length < 2) {
@@ -122,58 +133,39 @@ export default function IDCardCapture() {
   };
 
   const handleSubmit = async () => {
-    // Check if the image is ready
-    if (!sourceImageFromStorage || !cardImageUrl) {
-      setApiError('Face and IDCard capture is required');
+    if (!faceImageUrl || !cardImageUrl) {
+      setApiError('Both face and ID card images are required for verification.');
       return;
     }
 
     setIsLoading(true);
     setApiError(null);
 
-    //convert Base64 to File Object
-    const sourceFile = dataURLtoFile(sourceImageFromStorage, 'sourceImage.png');
+    const sourceFile = dataURLtoFile(faceImageUrl, 'sourceImage.png');
     const targetFile = dataURLtoFile(cardImageUrl, 'targetImage.png');
 
     if (!sourceFile || !targetFile) {
-      setApiError("Can't convert the image to file. Please, try again.");
+      setApiError('Image conversion failed. Please try again.');
       setIsLoading(false);
       return;
     }
 
-    //create FormData for sending API
     const formData = new FormData();
     formData.append('name', 'string');
     formData.append('sourceImage', sourceFile);
     formData.append('targetImage', targetFile);
 
-    const apiClient = axios.create({
-      baseURL: 'http://localhost:3000', // dedine base Url to the backend
-    });
-
     try {
-      const response = await apiClient.post('/pocs/verify', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await apiClient.post('/pocs/verify', formData);
 
-      if (
-        response.status >= 201 &&
-        response.status < 300 &&
-        response.data &&
-        typeof response.data.similarity === 'boolean'
-      ) {
+      if (response.data && typeof response.data.similarity === 'boolean') {
         console.log('Images successfully sent and verified. Similarity:', response.data.similarity);
-        localStorage.removeItem('sourceImage');
-
         if (response.data.similarity === true) {
           navigate('/success');
         } else {
           navigate('/failure');
         }
       } else {
-        // in case API response 201 but the data structure is invalid or the similarity field doesn't exist.
         setApiError('API response is invalid. Please try again.');
         console.error('Unexpected API response structure:', response.status, response.data);
         navigate('/failure');
@@ -181,18 +173,18 @@ export default function IDCardCapture() {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         if (error.response) {
-          const errorMessage = error.response.data?.message || 'verifying failed: ' + error.response.status;
+          const errorMessage = error.response.data?.message || 'Verification failed' + error.response.status;
           setApiError(errorMessage);
           console.error('API response error:', error.response.status, error.response.data);
         } else if (error.request) {
-          setApiError("Can't connect to server. Please check your internet connection.");
+          setApiError("Can't connect to server. Please check your internet connection");
           console.error('Network error:', error.message);
         } else {
-          setApiError('Unknown error.');
+          setApiError('An unknown error occured while setting up the request.');
           console.error('Axios error:', error.message);
         }
       } else {
-        setApiError('Unknown error.');
+        setApiError('An unexpected error occurred during verification.');
         console.error('Unexpected error', error);
       }
       navigate('/failure');
@@ -202,27 +194,17 @@ export default function IDCardCapture() {
   };
 
   useEffect(() => {
-    const storedSourceImage = localStorage.getItem('sourceImage');
-    if (storedSourceImage) {
-      setSourceImageFromStorage(storedSourceImage);
-    } else {
-      console.error('Source image (face) not found in localStorage. Redirecting to face capture.');
-      navigate('/face');
-    }
-  }, [navigate]);
-
-  useEffect(() => {
-    if (hasPermission !== false && sourceImageFromStorage !== null) {
+    if (!isCaptured) {
       startCamera();
     }
 
     return () => {
       stopCamera();
     };
-  }, [startCamera, stopCamera, hasPermission, sourceImageFromStorage]);
+  }, [step, isCaptured, startCamera, stopCamera]);
 
-  if (hasPermission === null || sourceImageFromStorage === null) {
-    return <p className="text-center text-gray-700 mt-10">Verifying Camera Access and loading data...</p>;
+  if (hasPermission === null) {
+    return <p className="text-center text-gray-700 mt-10">Verifying Camera Access...</p>;
   }
 
   if (hasPermission === false) {
@@ -233,46 +215,61 @@ export default function IDCardCapture() {
     );
   }
 
+  // Main UI rendering
   return (
     <div className="flex flex-col justify-center items-center">
+      <h2 className="my-5 text-xl font-bold">{step === 'face' ? 'Capture Your Face' : 'Capture Your ID Card'}</h2>
       {!isCaptured ? (
-        <div className="flex flex-col justify-center items-center">
-          <h1 className="my-5">Capture Your ID Card</h1>
-          <video className="w-full h-auto rounded-xl" ref={videoRef} autoPlay playsInline muted></video>{' '}
-          {/* แก้ไข: w-xl ไม่ใช่ Tailwind class มาตรฐาน, เปลี่ยนเป็น w-full */}
-          {!isCameraReady && hasPermission && <p className="text-gray-600 mt-2">Waiting for camera stream...</p>}
+        <>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full max-w-md h-auto rounded-xl border border-gray-300 shadow-lg"
+          />
           <button
-            className={`mt-5 bg-green-500 hover:bg-green-600 px-8 py-2 font-bold rounded-lg ${
-              !isCameraReady ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
             onClick={capturePhoto}
-            disabled={!isCameraReady}
+            disabled={!isCameraReady || isLoading}
+            className={`mt-5 px-8 py-2 font-bold rounded-lg ${
+              !isCameraReady || isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'
+            }`}
           >
             Take Photo
           </button>
-          <button className="my-2 bg-red-500 hover:bg-red-600 px-8 py-2 font-bold rounded-lg" onClick={handleClickBack}>
-            Back
-          </button>
-        </div>
+        </>
       ) : (
         <div className="flex flex-col justify-between items-center">
-          <h2>Are you confirm?</h2>
+          <h2 className="text-lg my-3">Are you sure this is clear?</h2>
           {apiError && <p className="text-red-500 mb-4 text-center">{apiError}</p>}
-          <img src={cardImageUrl || ''} alt="Captured" className="my-5 rounded-lg" />
+          <img
+            src={step === 'face' ? faceImageUrl || '' : cardImageUrl || ''} // Show relevant image based on step
+            alt="Captured"
+            className="my-5 w-full max-w-md h-auto rounded-lg border border-gray-300 shadow-lg"
+          />
           <div>
             <button
-              className="mx-2 bg-blue-500 hover:bg-blue-600 px-8 py-2 font-bold rounded-lg"
               onClick={handleSubmit}
               disabled={isLoading}
+              className={`mx-2 px-8 py-2 font-bold rounded-lg ${
+                isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+              }`}
             >
-              Confirm
+              {isLoading ? 'Sending data...' : 'Confirm'}
             </button>
-            <button className="mx-2 bg-red-500 hover:bg-red-600 px-8 py-2 font-bold rounded-lg" onClick={retakePhoto}>
+            <button
+              onClick={retakePhoto}
+              disabled={isLoading}
+              className={`mx-2 px-8 py-2 font-bold rounded-lg ${
+                isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'
+              }`}
+            >
               Retake
             </button>
           </div>
         </div>
       )}
+
       <canvas ref={canvasRef} className="hidden"></canvas>
     </div>
   );

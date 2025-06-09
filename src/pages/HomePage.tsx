@@ -8,7 +8,7 @@ export function HomePage() {
   };
 
   const handleSeparate = () => {
-    navigate('/face');
+    navigate('/captures');
   };
 
   return (
