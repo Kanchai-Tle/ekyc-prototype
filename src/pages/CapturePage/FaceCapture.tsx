@@ -5,7 +5,7 @@ export default function FaceCapture() {
   const navigate = useNavigate();
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [faceImageUrl, setFaceImageUrl] = useState<string | null>(null);
   const [isCaptured, setIsCaptured] = useState<boolean | null>(null);
   const [isCameraReady, setIsCameraReady] = useState<boolean | null>(null);
 
@@ -16,6 +16,14 @@ export default function FaceCapture() {
   const handleClickBack = () => {
     stopCamera();
     navigate('/home');
+  };
+
+  const handleClickConfirm = () => {
+    if (faceImageUrl) {
+      localStorage.setItem('sourceImage', faceImageUrl);
+      navigate('/idcard');
+      // console.log(faceImageUrl);
+    }
   };
 
   const stopCamera = useCallback(() => {
@@ -45,7 +53,7 @@ export default function FaceCapture() {
           videoRef.current?.play();
         };
         videoRef.current.onerror = (e) => {
-          console.log('Video element error:', e);
+          console.error('Video element error:', e);
           setIsCameraReady(false);
           setHasPermission(false);
         };
@@ -63,11 +71,11 @@ export default function FaceCapture() {
     const video = videoRef.current;
 
     if (!canvas || !video || !isCameraReady) {
-      console.log('Canvas, Video or Camera is not ready');
+      console.error('Canvas, Video or Camera is not ready');
       return;
     }
     if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.log('Video dimensions are 0. Camera might not be streaming.');
+      console.error('Video dimensions are 0. Camera might not be streaming.');
       return;
     }
 
@@ -84,14 +92,14 @@ export default function FaceCapture() {
 
     stopCamera();
 
-    const imageUrl = canvas.toDataURL('image/png');
+    const faceImageUrl = canvas.toDataURL('image/png');
     // console.log(imageUrl);
-    setImageUrl(imageUrl);
+    setFaceImageUrl(faceImageUrl);
     setIsCaptured(true);
   };
 
   const retakePhoto = () => {
-    setImageUrl(null);
+    setFaceImageUrl(null);
     setIsCaptured(false);
     startCamera();
   };
@@ -117,7 +125,7 @@ export default function FaceCapture() {
       {!isCaptured ? (
         <div className="flex flex-col justify-center items-center">
           <h1 className="my-5">Capture Your Face</h1>
-          <video className="w-xl h-auto rounded-xl" ref={videoRef} autoPlay playsInline muted></video>
+          <video className="w-full h-auto rounded-xl" ref={videoRef} autoPlay playsInline muted></video>
           {!isCameraReady && hasPermission && <p className="text-gray-600 mt-2">Waiting for camera stream...</p>}
           <button
             className={`mt-5 bg-green-500 hover:bg-green-600 px-8 py-2 font-bold rounded-lg ${
@@ -135,11 +143,11 @@ export default function FaceCapture() {
       ) : (
         <div className="flex flex-col justify-between items-center">
           <h2>Are you confirm?</h2>
-          <img src={imageUrl || ''} alt="Captured" className="my-5 rounded-lg" />
+          <img src={faceImageUrl || ''} alt="Captured" className="my-5 rounded-lg" />
           <div>
             <button
               className="mx-2 bg-blue-500 hover:bg-blue-600 px-8 py-2 font-bold rounded-lg"
-              onClick={() => navigate('/facesuccess')}
+              onClick={handleClickConfirm}
             >
               Confirm
             </button>
