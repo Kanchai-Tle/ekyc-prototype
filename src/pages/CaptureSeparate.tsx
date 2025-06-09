@@ -190,6 +190,7 @@ export default function CaptureSeparate() {
       navigate('/failure');
     } finally {
       setIsLoading(false);
+      stopCamera();
     }
   };
 

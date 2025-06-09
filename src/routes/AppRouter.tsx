@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router';
 
 import { HomePage } from '@/pages/HomePage';
-import { LoginPage } from '@/pages/LoginPage/LoginPage';
+import { LoginPage } from '@/pages/LoginPage';
 
 import CameraCapture from '@/pages/CapturePage';
 import CaptureSeparate from '@/pages/CaptureSeparate';
