@@ -11,7 +11,7 @@ const AuthContext = createContext<AuthContextValue>(null!);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState<boolean>(false);
+  const [isLogin, setIsLogin] = useState<boolean>(true);
 
   const login = () => {
     setIsLogin(true);
